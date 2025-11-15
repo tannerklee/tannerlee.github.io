@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Balance the US Budget — Interactive Simulator</title>
+  <link rel="stylesheet" href="../assets/css/style.css">
+  <style>
+    .controls h2{margin:0 0 12px; font-size:1.1rem}
+    .group{margin-bottom:14px; padding-bottom:12px; border-bottom:1px dashed rgba(255,255,255,0.08)}
+    .group:last-child{border-bottom:none}
+    .row{display:flex; align-items:center; gap:8px; margin:8px 0}
+    label{flex:1; color:var(--muted); font-size:0.93rem}
+    input[type="number"]{width:140px; padding:8px; border-radius:10px; border:1px solid rgba(255,255,255,0.12); background:#0e1430; color:var(--ink)}
+    .inline{display:flex; gap:8px; align-items:center}
+    .kpi{display:grid; grid-template-columns: repeat(4,1fr); gap:12px; margin-top:8px}
+    .tile{padding:10px; border-radius:10px; background:#0f1738; border:1px solid rgba(255,255,255,0.08); text-align:center}
+    .tile .val{font-size:1.1rem; font-weight:700}
+    .legend{display:flex; gap:12px; align-items:center; flex-wrap:wrap; color:var(--muted); font-size:0.9rem; margin-top:8px}
+    .notice{font-size:0.85rem; color:var(--muted); margin-top:10px}
+    main{display:grid; gap:16px; grid-template-columns: 400px 1fr; padding:16px; max-width:1200px; margin:0 auto}
+    @media (max-width: 980px){ main{grid-template-columns: 1fr} }
+    canvas{min-height:260px;}
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="container inner">
+      <div class="brand">Tanner Lee</div>
+      <nav class="nav">
+        <a href="../index.html">Home</a>
+        <a href="../about.html">About</a>
+        <a href="../tools/balance.html">Balance the US Budget</a>
+        <a href="../contact.html">Contact</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="container">
+    <h1>Balance the US Budget <span class="badge">interactive</span></h1>
+    <p class="small">
+      Explore “what if” scenarios. Adjust growth, inflation, interest, and fiscal choices to see if and when US federal debt
+      could reach zero. This is a simplified educational model, not a forecast.
+    </p>
+  </div>
+
+  <main>
+    <section class="controls card">
+      <h2>Inputs</h2>
+      <div class="group">
+        <div class="row">
+          <label for="startYear">Start year</label>
+          <input type="number" id="startYear" value="2025" min="1900" max="2300">
+        </div>
+        <div class="row">
+          <label for="startDebt">Starting Debt (trillion $)</label>
+          <input type="number" id="startDebt" value="38" step="0.1" min="0">
+        </div>
+        <div class="row">
+          <label for="startGDP">Starting GDP (trillion $)</label>
+          <input type="number" id="startGDP" value="28" step="0.1" min="0">
+        </div>
+        <div class="row">
+          <label for="maxYears">Max years to simulate</label>
+          <input type="number" id="maxYears" value="150" min="10" max="300">
+        </div>
+        <div class="notice">Values are nominal. Very rough, stylized model for education only.</div>
+      </div>
+
+      <div class="group">
+        <h3>Macro</h3>
+        <div class="row">
+          <label for="realGrowth">Real GDP growth (%/yr)</label>
+          <input type="number" id="realGrowth" value="1.8" step="0.1">
+        </div>
+        <div class="row">
+          <label for="inflation">Inflation (%/yr)</label>
+          <input type="number" id="inflation" value="2.3" step="0.1">
+        </div>
+        <div class="row">
+          <label for="interestRate">Average interest on debt (%/yr)</label>
+          <input type="number" id="interestRate" value="3.5" step="0.1">
+        </div>
+      </div>
+
+      <div class="group">
+        <h3>Fiscal</h3>
+        <div class="row">
+          <label for="primaryBalance">Baseline primary balance (% of GDP)</label>
+          <input type="number" id="primaryBalance" value="-3.0" step="0.1">
+        </div>
+        <div class="row">
+          <label for="revChange">Policy: revenue change (pp of GDP)</label>
+          <input type="number" id="revChange" value="0.0" step="0.1">
+        </div>
+        <div class="row">
+          <label for="spendChange">Policy: spending change (pp of GDP)</label>
+          <input type="number" id="spendChange" value="0.0" step="0.1">
+        </div>
+        <div class="notice">
+          Primary balance excludes interest. Positive = surplus; negative = deficit.
+          Policy changes adjust the surplus (revenue ↑, surplus ↑; spending ↑, surplus ↓).
+        </div>
+      </div>
+
+      <div class="group">
+        <h3>Run</h3>
+        <div class="inline">
+          <button id="runBtn" class="button">Run Simulation</button>
+          <button id="resetBtn" class="button" title="Reset to defaults">Reset</button>
+        </div>
+        <div class="notice small">
+          Model: Debt<sub>t+1</sub> = Debt<sub>t</sub> + Interest<sub>t</sub> − (PrimarySurplus% × GDP<sub>t</sub>)<br>
+          GDP<sub>t+1</sub> = GDP<sub>t</sub> × (1 + real + inflation + real×inflation).
+          Interest<sub>t</sub> = r × Debt<sub>t</sub>.
+        </div>
+      </div>
+    </section>
+
+    <section class="viz card">
+      <canvas id="chart"></canvas>
+      <div class="kpi">
+        <div class="tile">
+          <div class="small">Zero-debt year</div>
+          <div class="val" id="kpiYear">—</div>
+        </div>
+        <div class="tile">
+          <div class="small">Years to zero</div>
+          <div class="val" id="kpiYears">—</div>
+        </div>
+        <div class="tile">
+          <div class="small">Debt/GDP at year 10</div>
+          <div class="val" id="kpiRatio10">—</div>
+        </div>
+        <div class="tile">
+          <div class="small">Debt at year 10 (T$)</div>
+          <div class="val" id="kpiDebt10">—</div>
+        </div>
+      </div>
+      <div class="legend">
+        <span>Adjust inputs to see how different fiscal and macro assumptions change the debt path. Not a forecast, just a sandbox.</span>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container small">
+      Built for fun and learning. Simplified model; does not represent official projections or advice.
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    function simulate(params){
+      const {
+        startYear, startDebtT, startGDPT, maxYears,
+        realGrowthPct, inflationPct, interestPct,
+        primaryBalancePct, revChangePctPts, spendChangePctPts
+      } = params;
+
+      const years = [];
+      const debtT = [];
+      const gdpT = [];
+      const ratio = [];
+
+      const real = realGrowthPct / 100;
+      const infl = inflationPct / 100;
+      const r = interestPct / 100;
+      const g_nominal = (1 + real) * (1 + infl) - 1;
+
+      let debt = startDebtT;
+      let gdp = startGDPT;
+      const primarySurplusPct = primaryBalancePct/100 + revChangePctPts/100 - spendChangePctPts/100;
+      let zeroYear = null;
+
+      for(let t=0; t<=maxYears; t++){
+        const year = startYear + t;
+        years.push(year);
+        debtT.push(debt);
+        gdpT.push(gdp);
+        ratio.push(gdp>0 ? (debt/gdp)*100 : NaN);
+
+        if(debt <= 0 && zeroYear === null){
+          zeroYear = year;
+          break;
+        }
+
+        const interest = r * debt;
+        const primarySurplusAmt = primarySurplusPct * gdp;
+        const nextDebt = debt + interest - primarySurplusAmt;
+        const nextGDP = gdp * (1 + g_nominal);
+
+        debt = nextDebt;
+        gdp = nextGDP;
+
+        if(!isFinite(debt) || !isFinite(gdp)) break;
+        if(debt > 1e6 || gdp > 1e6) break;
+      }
+
+      return { years, debtT, gdpT, ratio, zeroYear };
+    }
+
+    function fmt(n, digits=1){
+      if(n===null || n===undefined || isNaN(n)) return '—';
+      return Number(n).toLocaleString(undefined, {maximumFractionDigits:digits, minimumFractionDigits:digits});
+    }
+
+    let chart;
+
+    function updateChart(data){
+      const ctx = $("chart");
+      const cfg = {
+        type: "line",
+        data: {
+          labels: data.years,
+          datasets: [
+            {label: "Debt (Trillion $)", data: data.debtT, yAxisID: 'y', tension: 0.2},
+            {label: "Debt-to-GDP (%)", data: data.ratio, yAxisID: 'y1', tension: 0.2}
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: {mode:'index', intersect:false},
+          plugins: {legend:{position:'bottom'}},
+          scales: {
+            y: {type:'linear', position:'left', title:{display:true, text:'Trillion $'}},
+            y1:{type:'linear', position:'right', grid:{drawOnChartArea:false}, title:{display:true, text:'% of GDP'}}
+          }
+        }
+      };
+      if(chart){ chart.destroy(); }
+      chart = new Chart(ctx, cfg);
+
+      const k10 = Math.min(10, data.debtT.length-1);
+      $("kpiYear").textContent  = data.zeroYear ? data.zeroYear : "Not reached";
+      $("kpiYears").textContent = data.zeroYear ? (data.zeroYear - Number($("startYear").value)) : "—";
+      $("kpiRatio10").textContent = data.ratio[k10] ? fmt(data.ratio[k10],1) + "%" : "—";
+      $("kpiDebt10").textContent  = data.debtT[k10] ? fmt(data.debtT[k10],1) : "—";
+    }
+
+    function readParams(){
+      return {
+        startYear: Number($("startYear").value),
+        startDebtT: Number($("startDebt").value),
+        startGDPT: Number($("startGDP").value),
+        maxYears: Number($("maxYears").value),
+        realGrowthPct: Number($("realGrowth").value),
+        inflationPct: Number($("inflation").value),
+        interestPct: Number($("interestRate").value),
+        primaryBalancePct: Number($("primaryBalance").value),
+        revChangePctPts: Number($("revChange").value),
+        spendChangePctPts: Number($("spendChange").value)
+      };
+    }
+
+    function run(){
+      const data = simulate(readParams());
+      updateChart(data);
+    }
+
+    $("runBtn").addEventListener("click", run);
+    $("resetBtn").addEventListener("click", () => {
+      $("startYear").value = 2025;
+      $("startDebt").value = 38;
+      $("startGDP").value = 28;
+      $("maxYears").value = 150;
+      $("realGrowth").value = 1.8;
+      $("inflation").value = 2.3;
+      $("interestRate").value = 3.5;
+      $("primaryBalance").value = -3.0;
+      $("revChange").value = 0.0;
+      $("spendChange").value = 0.0;
+      run();
+    });
+
+    run();
+  </script>
+</body>
+</html>
